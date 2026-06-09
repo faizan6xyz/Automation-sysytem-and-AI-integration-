@@ -49,11 +49,6 @@ def retrieve(query, k=1):
     bm25_scores_norm = (bm25_scores - bm25_scores.min()) / (bm25_scores.max() - bm25_scores.min() + 1e-8)   # Normalize the BM25 scores to a 0-1 range for fair combination with dense scores.
     final_scores = (0.7 * dense_scores_norm + 0.3 * bm25_scores_norm)  # Combine the normalized scores with weights (0.7 for dense and 0.3 * BM25) to create a hybrid relevance score.
     top_indices = np.argsort(final_scores)[::-1][:k] # Get the indices of the top k chunks based on the final combined scores, sorting them in descending order to retrieve the most relevant chunks according to the hybrid scoring mechanism.
-    for rank, idx in enumerate(top_indices):
-        print(f"Rank {rank+1}")
-        print(f"Hybrid Score: {final_scores[idx]:.4f}")
-        print(all_chunks[idx])
-        print("-" * 60)
     return [(all_chunks[idx], final_scores[idx]) for idx in top_indices] # Return a list of tuples containing the top k chunks and their corresponding final scores, allowing for further processing or display as needed. Each tuple consists of the chunk text and its associated relevance score based on the combined dense and BM25 scoring mechanism.
 if __name__ == "__main__": # This block ensures that the retrieval function is only executed when this script is run directly, allowing for modularity and preventing unintended execution when imported as a module in other scripts.
     while True:
