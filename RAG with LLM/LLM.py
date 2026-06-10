@@ -2,7 +2,7 @@ import os
 import json
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
-from RAG import retrieve
+from RAG_Load import retrieve
 model_name = "Qwen/Qwen2.5-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_name) 
 model = AutoModelForCausalLM.from_pretrained(model_name,torch_dtype=torch.float16,device_map="auto") # Load the Qwen 2.5B model with half-precision (float16) for faster inference and reduced memory usage, and automatically map the model to available devices (e.g., GPU) for optimal performance during generation. This allows the model to generate responses efficiently while maintaining a balance between speed and quality, especially when running on hardware with limited resources.

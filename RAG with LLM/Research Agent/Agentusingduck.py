@@ -3,6 +3,9 @@ import os
 from duckduckgo_search import DDGS
 from openai import OpenAI
 from Toolsusingduck import search_deep , search_news , search_web
+import sys
+sys.path.append("..")  # path to the folder containing indexer.py
+from Rag_create import build_index
 client = OpenAI(
   base_url = "https://integrate.api.nvidia.com/v1",
   api_key = "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"
@@ -63,7 +66,7 @@ def parse_response(text: str):
         return "tool", (tool, input_)
     return "unknown", text
 def save_report(topic: str, content: str):
-    folder = "results"
+    folder = "../data"
     filename = topic[:40].replace(" ", "_") + "_report.md"
     filepath = os.path.join(folder, filename)
     with open(filepath, "w", encoding="utf-8") as f:
@@ -120,3 +123,4 @@ if __name__ == "__main__":
             print("Goodbye!")
             break
         run_research_agent(prompt)
+        print("search added to the vector DB")

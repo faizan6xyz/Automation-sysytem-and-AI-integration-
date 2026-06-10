@@ -2,7 +2,7 @@ import os
 import json
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
-from RAG import retrieve
+from RAG_Load import retrieve
 
 model_name = "Qwen/Qwen2.5-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
