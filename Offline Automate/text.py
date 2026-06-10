@@ -1,12 +1,3 @@
-"""
-Desktop LLM Controller
-Uses Qwen2.5-3B-Instruct locally to control your PC:
-- Open apps
-- Find files
-- Copy / move files
-- List directory contents
-"""
-
 import os
 import re
 import sys
@@ -18,20 +9,10 @@ from pathlib import Path
 from typing import Optional
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
-
-# ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
 MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
 MAX_NEW_TOKENS = 256
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
 OS = platform.system()  # "Windows" | "Linux" | "Darwin"
-
-# ─────────────────────────────────────────────
-# TOOLS
-# ─────────────────────────────────────────────
-
 def open_app(app_name: str) -> str:
     """Open an application by name."""
     app_name = app_name.strip()
@@ -58,27 +39,20 @@ def open_app(app_name: str) -> str:
             subprocess.Popen([app_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         elif OS == "Darwin":
             subprocess.Popen(["open", "-a", app_name])
-        return f"✅ Opened '{app_name}' successfully."
+        return f" Opened '{app_name}' successfully."
     except Exception as e:
-        return f"❌ Could not open '{app_name}': {e}"
-
-
+        return f" Could not open '{app_name}': {e}"
 def find_file(filename: str, search_root: str = None) -> str:
     """Search the entire PC for a file by name (supports wildcards)."""
     filename = filename.strip()
     if search_root is None:
-        # Start from user home by default; for full PC scan use "/"
         search_root = str(Path.home())
-
     matches = []
     pattern = filename.lower()
     use_glob = "*" in pattern or "?" in pattern
-
     print(f"  🔍 Searching in {search_root} for '{filename}' ...")
-
     try:
         for root, dirs, files in os.walk(search_root, followlinks=False):
-            # Skip system/hidden folders to speed up search
             dirs[:] = [
                 d for d in dirs
                 if not d.startswith(".") and d not in {
@@ -101,74 +75,56 @@ def find_file(filename: str, search_root: str = None) -> str:
                 break
     except PermissionError:
         pass
-
     if not matches:
-        return f"❌ No files found matching '{filename}' under {search_root}."
+        return f" No files found matching '{filename}' under {search_root}."
 
-    result = f"✅ Found {len(matches)} match(es):\n"
+    result = f" Found {len(matches)} match(es):\n"
     for m in matches:
-        result += f"  📄 {m}\n"
+        result += f"   {m}\n"
     return result.strip()
-
-
 def copy_file(source: str, destination: str) -> str:
     """Copy a file or folder from source to destination."""
     source = source.strip()
     destination = destination.strip()
-
-    # Expand ~ and env vars
     source = os.path.expandvars(os.path.expanduser(source))
     destination = os.path.expandvars(os.path.expanduser(destination))
-
     src = Path(source)
     dst = Path(destination)
-
     if not src.exists():
-        return f"❌ Source not found: {source}"
-
+        return f" Source not found: {source}"
     try:
         if src.is_dir():
             shutil.copytree(str(src), str(dst / src.name), dirs_exist_ok=True)
-            return f"✅ Copied folder '{src.name}' → {destination}"
+            return f" Copied folder '{src.name}' → {destination}"
         else:
             dst.mkdir(parents=True, exist_ok=True) if dst.suffix == "" else dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(src), str(dst))
-            return f"✅ Copied '{src.name}' → {destination}"
+            return f" Copied '{src.name}' → {destination}"
     except Exception as e:
-        return f"❌ Copy failed: {e}"
-
-
+        return f" Copy failed: {e}"
 def move_file(source: str, destination: str) -> str:
-    """Move a file or folder from source to destination."""
     source = os.path.expandvars(os.path.expanduser(source.strip()))
     destination = os.path.expandvars(os.path.expanduser(destination.strip()))
-
     src = Path(source)
     dst = Path(destination)
-
     if not src.exists():
-        return f"❌ Source not found: {source}"
-
+        return f" Source not found: {source}"
     try:
         dst.mkdir(parents=True, exist_ok=True) if dst.suffix == "" else dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(dst))
-        return f"✅ Moved '{src.name}' → {destination}"
+        return f" Moved '{src.name}' → {destination}"
     except Exception as e:
-        return f"❌ Move failed: {e}"
-
-
+        return f" Move failed: {e}"
 def list_directory(path: str = None) -> str:
     """List contents of a directory."""
     if path is None or path.strip() == "":
         path = str(Path.home())
     path = os.path.expandvars(os.path.expanduser(path.strip()))
-
     p = Path(path)
     if not p.exists():
         return f"❌ Path not found: {path}"
     if not p.is_dir():
         return f"❌ Not a directory: {path}"
-
     try:
         items = list(p.iterdir())
         dirs = sorted([i.name for i in items if i.is_dir()])
@@ -180,30 +136,22 @@ def list_directory(path: str = None) -> str:
             result += f"  📄 {f}\n"
         return result.strip()
     except PermissionError:
-        return f"❌ Permission denied: {path}"
-
-
+        return f" Permission denied: {path}"
 def delete_file(path: str) -> str:
     """Delete a file or empty folder."""
     path = os.path.expandvars(os.path.expanduser(path.strip()))
     p = Path(path)
     if not p.exists():
-        return f"❌ Not found: {path}"
+        return f" Not found: {path}"
     try:
         if p.is_dir():
             shutil.rmtree(str(p))
-            return f"✅ Deleted folder: {path}"
+            return f"Deleted folder: {path}"
         else:
             p.unlink()
-            return f"✅ Deleted file: {path}"
+            return f" Deleted file: {path}"
     except Exception as e:
-        return f"❌ Delete failed: {e}"
-
-
-# ─────────────────────────────────────────────
-# TOOL REGISTRY
-# ─────────────────────────────────────────────
-
+        return f" Delete failed: {e}"
 TOOLS = {
     "open_app": open_app,
     "find_file": find_file,
@@ -212,7 +160,6 @@ TOOLS = {
     "list_directory": list_directory,
     "delete_file": delete_file,
 }
-
 TOOL_DESCRIPTIONS = """
 You are a desktop controller AI. You interpret user commands and respond with a JSON tool call.
 
@@ -237,11 +184,6 @@ User: "find resume.pdf on desktop" → {"tool": "find_file", "args": {"filename"
 User: "copy report.docx to D:/backup" → {"tool": "copy_file", "args": {"source": "report.docx", "destination": "D:/backup"}}
 User: "show what's in downloads" → {"tool": "list_directory", "args": {"path": "~/Downloads"}}
 """
-
-# ─────────────────────────────────────────────
-# LLM SETUP
-# ─────────────────────────────────────────────
-
 def load_model():
     print(f"⚙️  Loading {MODEL_ID} on {DEVICE}...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
@@ -251,8 +193,6 @@ def load_model():
         "device_map": "auto",
         "low_cpu_mem_usage": True,
     }
-
-    # 4GB VRAM: load in 4-bit if bitsandbytes available
     try:
         from transformers import BitsAndBytesConfig
         bnb_config = BitsAndBytesConfig(
@@ -269,25 +209,20 @@ def load_model():
 
     model = AutoModelForCausalLM.from_pretrained(MODEL_ID, **load_kwargs)
     model.eval()
-    print("✅ Model loaded.\n")
+    print(" Model loaded.\n")
     return tokenizer, model
-
-
 def call_llm(tokenizer, model, user_input: str) -> dict:
     """Call the LLM and parse a tool call from its response."""
     messages = [
         {"role": "system", "content": TOOL_DESCRIPTIONS},
         {"role": "user", "content": user_input},
     ]
-
     text = tokenizer.apply_chat_template(
         messages,
         tokenize=False,
         add_generation_prompt=True,
     )
-
     inputs = tokenizer([text], return_tensors="pt").to(DEVICE)
-
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
@@ -297,76 +232,54 @@ def call_llm(tokenizer, model, user_input: str) -> dict:
             top_p=None,
             pad_token_id=tokenizer.eos_token_id,
         )
-
-    # Decode only new tokens
     new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
     response = tokenizer.decode(new_ids, skip_special_tokens=True).strip()
     return response
-
-
 def parse_tool_call(response: str) -> Optional[dict]:
     """Extract JSON from LLM response."""
-    # Try to find JSON in the response
     json_match = re.search(r'\{.*\}', response, re.DOTALL)
     if json_match:
         try:
             return json.loads(json_match.group())
         except json.JSONDecodeError:
             pass
-
-    # Try parsing entire response
     try:
         return json.loads(response)
     except json.JSONDecodeError:
         return None
-
-
 def execute_tool(tool_call: dict) -> str:
     """Execute the parsed tool call."""
     tool_name = tool_call.get("tool", "unknown")
     args = tool_call.get("args", {})
-
     if tool_name == "unknown" or tool_name not in TOOLS:
-        return f"❓ I couldn't understand that command. Available tools: {', '.join(TOOLS.keys())}"
-
+        return f" I couldn't understand that command. Available tools: {', '.join(TOOLS.keys())}"
     try:
         fn = TOOLS[tool_name]
         result = fn(**args)
         return result
     except TypeError as e:
-        return f"❌ Tool call error: {e}"
-
-
-# ─────────────────────────────────────────────
-# MAIN AGENT LOOP
-# ─────────────────────────────────────────────
-
+        return f" Tool call error: {e}"
 def main():
     print("=" * 55)
-    print("  🖥️  Desktop LLM Controller")
+    print("    Desktop LLM Controller")
     print("  Powered by Qwen2.5-3B-Instruct")
     print("=" * 55)
     print("Commands: 'quit' to exit | 'help' for examples\n")
-
     tokenizer, model = load_model()
-
     while True:
         try:
             user_input = input("You: ").strip()
         except (KeyboardInterrupt, EOFError):
-            print("\n👋 Bye!")
+            print("\n Bye!")
             break
-
         if not user_input:
             continue
-
         if user_input.lower() in {"quit", "exit", "q"}:
-            print("👋 Bye!")
+            print(" Bye!")
             break
-
         if user_input.lower() == "help":
             print("""
-📖 Example commands:
+ Example commands:
   • open chrome
   • open notepad
   • find resume.pdf
@@ -378,21 +291,15 @@ def main():
   • delete ~/Downloads/old_file.zip
 """)
             continue
-
-        print("🤖 Thinking...")
+        print(" Thinking...")
         raw_response = call_llm(tokenizer, model, user_input)
         print(f"   [LLM raw]: {raw_response}")
-
         tool_call = parse_tool_call(raw_response)
-
         if tool_call is None:
-            print("❓ Could not parse a tool call. Try rephrasing your command.\n")
+            print(" Could not parse a tool call. Try rephrasing your command.\n")
             continue
-
         print(f"   [Tool]: {tool_call['tool']} | [Args]: {tool_call.get('args', {})}")
         result = execute_tool(tool_call)
         print(f"\n{result}\n")
-
-
 if __name__ == "__main__":
     main()

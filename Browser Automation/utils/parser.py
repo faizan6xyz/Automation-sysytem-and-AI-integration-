@@ -46,7 +46,7 @@ def parse_action(llm_output: str) -> BrowserAction:
         action_type = "goto"
     if action_type in ("type", "input", "enter"):
         action_type = "fill"
-    if action_type in ("press", "tap"):
+    if action_type in ("press", "tap", "click"):
         action_type = "click"
     if action_type in ("finish", "complete", "stop"):
         action_type = "done"
