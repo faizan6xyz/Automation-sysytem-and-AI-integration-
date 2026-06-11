@@ -18,8 +18,6 @@ class HFAgent:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         dtype  = torch.float16 if device == "cuda" else torch.float32
         console.print(f"[bold cyan]Device:[/] {device}  |  dtype: {dtype}")
-        # local_files_only=True  → never ping the internet
-        # trust_remote_code=True → needed for Qwen
         tokenizer = AutoTokenizer.from_pretrained(
             self.model_path,
             local_files_only=True,
@@ -56,8 +54,6 @@ class HFAgent:
             )
             result    = self.pipe(formatted)
             generated = result[0]["generated_text"]
-
-            # Strip the input prompt — keep only new tokens
             if formatted in generated:
                 generated = generated[len(formatted):].strip()
         except Exception:

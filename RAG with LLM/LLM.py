@@ -1,53 +1,205 @@
-import os
 import json
+import re
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
 from RAG_Load import retrieve
+def web_search(query: str) -> str:
+    """Call your browser agent / DuckDuckGo / SerpAPI here."""
+    from duckduckgo_search import DDGS
+    with DDGS() as ddgs:
+        results = list(ddgs.text(query, max_results=3))
+    if not results:
+        return "No results found."
+    return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
+def rag_search(query: str) -> str:
+    """Your existing RAG retrieve."""
+    retrieved = retrieve(query)
+    chunks = [chunk for chunk, score in retrieved]
+    return "\n\n".join(str(c) for c in chunks)
+
+def calculate(expression: str) -> str:
+    try:
+        return str(eval(expression))
+    except Exception as e:
+        return f"Error: {e}"
+TOOLS = {
+    "web_search": web_search,
+    "rag_search": rag_search,
+    "calculate":  calculate,
+}
+TOOL_SYSTEM_PROMPT = """You are a helpful assistant with access to these tools:
+
+1. web_search(query: str)
+   Use when: user wants to search the web, research a topic, find recent news,
+             look something up online, or asks about current events.
+   Example triggers: "search for X", "research X", "look up X", "find info about X",
+                     "what are the latest X", "I want to know about X"
+
+2. rag_search(query: str)  
+   Use when: user asks about documents, uploaded files, or company-specific knowledge.
+   Example triggers: "what does our policy say", "find in the documents", "check the files"
+
+3. calculate(expression: str)
+   Use when: user wants a mathematical calculation.
+   Example triggers: "calculate", "what is 2+2", "solve"
+
+IMPORTANT RULES:
+- If a tool is needed, respond ONLY with a JSON block like this:
+  {"tool": "web_search", "arguments": {"query": "your search query"}}
+- Do NOT add any text before or after the JSON when calling a tool.
+- If no tool is needed, respond normally in plain text.
+- Only call ONE tool per response.
+"""
+def parse_tool_call(text: str):
+    """Extract tool call JSON from LLM output. Returns dict or None."""
+    # find JSON block in the response
+    match = re.search(r'\{.*\}', text.strip(), re.DOTALL)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group())
+        if "tool" in data and "arguments" in data:
+            return data
+    except json.JSONDecodeError:
+        pass
+    return None
+def execute_tool(tool_call: dict) -> str:
+    tool_name = tool_call["tool"]
+    args      = tool_call["arguments"]
+
+    if tool_name not in TOOLS:
+        return f"Unknown tool: {tool_name}"
+
+    print(f"[Tool called: {tool_name}({args})]")
+    result = TOOLS[tool_name](**args)
+    print(f"[Tool result preview: {result[:100]}...]")
+    return result
 model_name = "Qwen/Qwen2.5-3B-Instruct"
-tokenizer = AutoTokenizer.from_pretrained(model_name) 
-model = AutoModelForCausalLM.from_pretrained(model_name,torch_dtype=torch.float16,device_map="auto") # Load the Qwen 2.5B model with half-precision (float16) for faster inference and reduced memory usage, and automatically map the model to available devices (e.g., GPU) for optimal performance during generation. This allows the model to generate responses efficiently while maintaining a balance between speed and quality, especially when running on hardware with limited resources.
-streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True) # Initialize a TextStreamer to handle the output of generated text from the model, configured to skip the original prompt and any special tokens in the output. This allows for real-time streaming of the generated response directly to the console without including unnecessary tokens or the input prompt, providing a cleaner and more user-friendly output during interactions with the assistant.
-HISTORY_FILE = "chat_history.json"
-if os.path.exists(HISTORY_FILE):
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        content = f.read().strip()
-        messages = json.loads(content) if content else []
-else:
-    messages = [{"role": "system","content": ("You are a helpful AI assistant. "
-                "Answer clearly and use the provided context when available.")}]
-print("Assistant ready.")
-print("Type 'exit' to quit.\n")
-SCORE_THRESHOLD = 0.8  #  Set a threshold for the relevance score to decide when to use retrieved context. If the top score from retrieval is below this threshold, the model will answer without using the retrieved context, treating the query as a normal question. Adjust this value based on experimentation to find the right balance between using relevant context and avoiding irrelevant information.
+tokenizer  = AutoTokenizer.from_pretrained(model_name)
+model      = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    dtype=torch.float16,
+    device_map="auto"
+)
+messages = [{"role": "system", "content": TOOL_SYSTEM_PROMPT}]
+print("Assistant ready. Type 'exit' to quit.\n")
+SCORE_THRESHOLD = 0.8
 while True:
-    user_input = input("You: ")
+    user_input = input("You: ").strip()
     if user_input.lower() == "exit":
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(messages, f, indent=2)
-        print("Conversation saved.")
         break
-    retrieved = retrieve(user_input) # Call the retrieve function to get relevant chunks of text based on the user's query. The function returns a list of tuples, where each tuple contains a retrieved chunk and its corresponding relevance score.
-    retrieved_chunks = [chunk for chunk, score in retrieved] # Extract just the text chunks from the retrieved results, ignoring the scores for now. This will be used to construct the context for the RAG prompt if the relevance score is above the defined threshold.
-    top_score = max(score for chunk, score in retrieved) # Get the highest relevance score from the retrieved results to determine if it meets the threshold for including context in the prompt. This score will be used to decide whether to activate RAG (include retrieved context) or to skip it and answer based solely on the user's query.
-    if top_score >= SCORE_THRESHOLD:
-        context = "\n\n".join([str(c) for c in retrieved_chunks])
-        print(f"[RAG active — top score: {top_score:.4f}]")
-        rag_prompt = (
-            f"Context:\n{context}\n\n"
-            f"Question:\n{user_input}\n\n"
-            f"Answer using the context above. "
-            f"If the answer is not in the context, answer normally.")
+    messages.append({"role": "user", "content": user_input})
+    prompt  = tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
+    )
+    inputs  = tokenizer(prompt, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=150,       # tool calls are short
+            do_sample=False,          # greedy — more reliable JSON
+            temperature=None,
+            top_p=None,
+            repetition_penalty=1.1,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+    llm_response = tokenizer.decode(
+        outputs[0][inputs.input_ids.shape[1]:],
+        skip_special_tokens=True
+    ).strip()
+    print(f"[LLM raw]: {llm_response}")
+    tool_call = parse_tool_call(llm_response)
+    if tool_call:
+        tool_result = execute_tool(tool_call)
+        messages[-1] = {"role": "user", "content": user_input}
+        messages.append({
+            "role": "assistant",
+            "content": llm_response
+        })
+        messages.append({
+            "role": "user",
+            "content": f"Tool result:\n{tool_result}\n\nNow answer the user's question using this result."
+        })
+        prompt2 = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs2 = tokenizer(prompt2, return_tensors="pt").to(model.device)
+        streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        print("Assistant: ", end="", flush=True)
+        final_outputs = model.generate(
+            **inputs2,
+            max_new_tokens=400,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9,
+            repetition_penalty=1.1,
+            eos_token_id=tokenizer.eos_token_id,
+            streamer=streamer,
+        )
+        final_response = tokenizer.decode(
+            final_outputs[0][inputs2.input_ids.shape[1]:],
+            skip_special_tokens=True
+        ).strip()
+        messages.pop()   # remove "Tool result: ..."
+        messages.pop()   # remove LLM's JSON response
+        messages[-1] = {"role": "user", "content": user_input}
+        messages.append({"role": "assistant", "content": final_response})
     else:
-        print(f"[RAG skipped — top score: {top_score:.4f} below threshold {SCORE_THRESHOLD}]")
-        rag_prompt = user_input
-    messages.append({"role": "user", "content": rag_prompt}) # Add the user's query (with or without context) to the conversation history as a new message. This allows the model to generate a response based on the entire conversation history, including the latest query and any retrieved context if applicable.
-    prompt = tokenizer.apply_chat_template(messages,tokenize=False,add_generation_prompt=True) # Convert the conversation history into a single prompt string formatted according to the chat template expected by the model. This includes adding any necessary special tokens or formatting to indicate the roles of the messages (user vs assistant) and to signal the start of the generation phase for the model.
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device) # Tokenize the constructed prompt and convert it into a format suitable for input to the model. The resulting tensors are moved to the same device as the model (e.g., GPU) to ensure efficient processing during generation. This step prepares the input data for the model to generate a response based on the user's query and any relevant context that was included in the prompt.
-    outputs = model.generate(**inputs,max_new_tokens=300,do_sample=True,temperature=0.7,top_p=0.9,repetition_penalty=1.1,eos_token_id=tokenizer.eos_token_id,streamer=streamer) # Generate a response from the model using the provided prompt, with parameters set for sampling to create more diverse and natural responses. The streamer allows for real-time output of the generated text as it is produced by the model.
-    response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:],skip_special_tokens=True) # Decode the generated tokens into a human-readable string, skipping any special tokens that are not part of the natural language response. The slicing [inputs.input_ids.shape[1]:] ensures that only the newly generated tokens (the response) are decoded, excluding the original prompt tokens.
-    print()
-    messages[-1] = {"role": "user", "content": user_input} # Update the last message in the conversation history to contain only the original user input, removing the context from the stored history. This ensures that the conversation history remains clean and focused on the user's queries without including potentially large amounts of retrieved context, which can be re-retrieved as needed for future queries.
-    messages.append({"role": "assistant", "content": response}) # Add the assistant's generated response to the conversation history as a new message. This allows the model to maintain a complete record of the conversation, which can be used for generating future responses that take into account the entire dialogue history.
+        retrieved  = retrieve(user_input)
+        top_score  = max(score for _, score in retrieved)
+        if top_score >= SCORE_THRESHOLD and not tool_call:
+            chunks  = [chunk for chunk, _ in retrieved]
+            context = "\n\n".join(str(c) for c in chunks)
+            print(f"[RAG active — score: {top_score:.4f}]")
+            rag_msg = messages[:-1] + [{
+                "role": "user",
+                "content": (
+                    f"Context:\n{context}\n\n"
+                    f"Question: {user_input}"
+                )
+            }]
+            prompt_rag = tokenizer.apply_chat_template(
+                rag_msg, tokenize=False, add_generation_prompt=True
+            )
+            inputs_rag = tokenizer(prompt_rag, return_tensors="pt").to(model.device)
+            streamer   = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+            print("Assistant: ", end="", flush=True)
+            rag_outputs = model.generate(
+                **inputs_rag,
+                max_new_tokens=400,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+                repetition_penalty=1.1,
+                eos_token_id=tokenizer.eos_token_id,
+                streamer=streamer,
+            )
+            final_response = tokenizer.decode(
+                rag_outputs[0][inputs_rag.input_ids.shape[1]:],
+                skip_special_tokens=True
+            ).strip()
+        else:
+            print(f"[RAG skipped — score: {top_score:.4f}]")
+            print("Assistant: ", end="", flush=True)
+            streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+            final_outputs = model.generate(
+                **inputs,
+                max_new_tokens=400,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+                repetition_penalty=1.1,
+                eos_token_id=tokenizer.eos_token_id,
+                streamer=streamer,
+            )
+            final_response = tokenizer.decode(
+                final_outputs[0][inputs.input_ids.shape[1]:],
+                skip_special_tokens=True
+            ).strip()
+
+        messages[-1] = {"role": "user",      "content": user_input}
+        messages.append({"role": "assistant", "content": final_response})
     if len(messages) > 21:
-        messages = [messages[0]] + messages[-20:]   # Limit the conversation history to the most recent 20 messages plus the initial system message to prevent the prompt from becoming too long for the model to handle effectively. This ensures that the model has enough context to generate relevant responses while avoiding issues with excessively long prompts that can lead to truncation or memory constraints.
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(messages, f, indent=2)  # Save the updated conversation history to a JSON file after each interaction, ensuring that the entire dialogue is preserved for future reference or continuation of the conversation. This allows the user to exit and return to the conversation later without losing any context.
+        messages = [messages[0]] + messages[-20:]
+    print()
