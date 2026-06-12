@@ -12,14 +12,14 @@ from playwright.sync_api import sync_playwright
 # ── API Client ─────────────────────────────────────────────────────────────────
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
-    api_key="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"
+    api_key="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"
 )
 
 NIM_MODEL = "meta/llama-3.1-8b-instruct"
 
 # ── Chrome profile config ──────────────────────────────────────────────────────
-CHROME_USER_DATA = r"C:\Users\faiza\AppData\Local\Google\Chrome\User Data"
-PROFILE_NAME     = "Profile 23"
+CHROME_USER_DATA = r"C:\chrome-debug"   # clean debug dir
+PROFILE_NAME     = "Profile 23"         # copied profile inside debug dir
 DEBUG_PORT       = 9222
 
 # ── Prompt ─────────────────────────────────────────────────────────────────────
@@ -134,19 +134,16 @@ def execute_action(page, action: str, target: str, value: str) -> bool:
 
 
 def is_port_free(port: int) -> bool:
-    """Check whether a TCP port is available on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(("127.0.0.1", port)) != 0
 
 
 def kill_chrome():
-    """Kill all Chrome processes and wait until none remain."""
     print("[Browser] Killing existing Chrome instances...")
     for _ in range(3):
-        subprocess.run(["taskkill", "/F", "/IM", "chrome.exe"], capture_output=True)
+        subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], capture_output=True)
         time.sleep(1)
 
-    # Wait until no chrome.exe process remains
     print("[Browser] Waiting for Chrome processes to exit...")
     for _ in range(20):
         result = subprocess.run(
@@ -162,7 +159,6 @@ def kill_chrome():
 
 
 def clear_profile_locks():
-    """Remove stale Chrome profile lock files that block reuse."""
     patterns = [
         os.path.join(CHROME_USER_DATA, PROFILE_NAME, "*.lock"),
         os.path.join(CHROME_USER_DATA, PROFILE_NAME, "SingletonLock"),
@@ -180,7 +176,6 @@ def clear_profile_locks():
 
 
 def wait_for_debug_port(timeout: int = 30):
-    """Poll until Chrome's remote-debug port responds or timeout is reached."""
     print(f"[Browser] Waiting for Chrome debug port {DEBUG_PORT}...")
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -209,21 +204,15 @@ def find_chrome_exe() -> str:
     exe = next((p for p in candidates if os.path.exists(p)), None)
     if not exe:
         raise FileNotFoundError(
-            "chrome.exe not found in any standard location. "
-            "Set the path manually in find_chrome_exe()."
+            "chrome.exe not found. Set the path manually in find_chrome_exe()."
         )
     return exe
 
 
 def launch_browser(playwright):
-    """
-    Kill Chrome, clear locks, start a fresh instance with remote debugging,
-    wait for the debug port, then connect Playwright over CDP.
-    """
     kill_chrome()
     clear_profile_locks()
 
-    # Make sure the port is actually free before we launch
     if not is_port_free(DEBUG_PORT):
         print(f"[Browser] Port {DEBUG_PORT} still in use — waiting up to 10s...")
         for _ in range(20):
@@ -232,23 +221,21 @@ def launch_browser(playwright):
             time.sleep(0.5)
         else:
             raise OSError(
-                f"Port {DEBUG_PORT} is still occupied after waiting. "
-                "Kill the process holding it manually."
+                f"Port {DEBUG_PORT} is still occupied. Kill the process holding it manually."
             )
 
     chrome_exe = find_chrome_exe()
     print(f"[Browser] Launching Chrome: {chrome_exe}")
-    print(f"[Browser] Profile: {PROFILE_NAME}")
+    print(f"[Browser] User data dir : {CHROME_USER_DATA}")
+    print(f"[Browser] Profile       : {PROFILE_NAME}")
 
     proc = subprocess.Popen([
         chrome_exe,
         f"--remote-debugging-port={DEBUG_PORT}",
         f"--user-data-dir={CHROME_USER_DATA}",
-        f"--profile-directory={PROFILE_NAME}",
+        f"--profile-directory={PROFILE_NAME}",   # ← uses copied profile
         "--no-first-run",
         "--no-default-browser-check",
-        "--disable-extensions",
-        "--disable-background-networking",
     ])
     print(f"[Browser] Chrome PID: {proc.pid}")
 
@@ -275,7 +262,6 @@ def run_browser_agent(goal: str, start_url: str, max_steps: int = 20):
 
         url = start_url.strip() if start_url.strip() else "https://www.google.com"
 
-        # Reuse existing page or open a new one
         if context.pages:
             page = context.pages[0]
             print(f"[Browser] Reusing existing page: {page.url}")
