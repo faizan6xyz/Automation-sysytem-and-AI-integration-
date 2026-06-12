@@ -200,9 +200,8 @@ def export_cookies() -> dict:
     tmp_dir = tempfile.mkdtemp()
     tmp_db  = os.path.join(tmp_dir, "Cookies")   # keep original name for robocopy
     if not _robocopy_file(cookies_db, tmp_db):
-        print("[Auth] WARNING: Could not copy Cookies file — launching without pre-auth.")
-        print("       YouTube search works without login. Continuing...")
-        return {"cookies": [], "origins": []}
+        print("[Auth] ERROR: robocopy failed to copy the Cookies file.")
+        exit(1)
     for suffix in ("-journal", "-wal", "-shm"):
         companion = cookies_db + suffix
         if os.path.exists(companion) and os.path.getsize(companion) > 0:
@@ -378,78 +377,50 @@ def execute_action(page, action: str, target: str, value: str) -> bool:
         return False
 
 
-def launch_browser(playwright):
-    """
-    Connect to an already-running Chrome with remote debugging enabled.
-    You start Chrome manually with --remote-debugging-port=9222,
-    Playwright just attaches — no profile conflicts, no black pages.
-    """
-    import subprocess, time as _time
-
-    chrome_candidates = [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-    ]
-    chrome_exe = next((p for p in chrome_candidates if os.path.exists(p)), None)
-    if not chrome_exe:
-        raise FileNotFoundError("Chrome.exe not found")
-
-    profile_dir = os.path.join(CHROME_USER_DATA, PROFILE_NAME)
-
-    print(f"[Browser] Starting Chrome with remote debugging on port 9222...")
-    print(f"[Browser] Profile: {profile_dir}")
-
-    subprocess.Popen([
-        chrome_exe,
-        "--remote-debugging-port=9222",
-        f"--user-data-dir={CHROME_USER_DATA}",
-        f"--profile-directory={PROFILE_NAME}",
-        "--no-first-run",
-        "--no-default-browser-check",
-    ])
-
-    # wait for Chrome to start and debugging port to open
-    print("[Browser] Waiting for Chrome to start...")
-    _time.sleep(3)
-
-    browser  = playwright.chromium.connect_over_cdp("http://localhost:9222")
-    context  = browser.contexts[0] if browser.contexts else browser.new_context()
-    print(f"[Browser] Connected. Contexts: {len(browser.contexts)}")
+def launch_browser(playwright, auth_state: dict):
+    print("[Browser] Launching browser with exported cookies...")
+    browser = playwright.chromium.launch(
+        headless=False,
+        args=[
+            "--no-sandbox",
+            "--disable-blink-features=AutomationControlled",
+            "--start-maximized",
+            "--disable-infobars",
+        ]
+    )
+    context = browser.new_context(
+        storage_state=auth_state,
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        viewport={"width": 1280, "height": 800},
+        locale="en-US",
+        timezone_id="Asia/Kolkata",
+        extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+    )
     return browser, context
+
+
+# ── Main agent loop ────────────────────────────────────────────────────────────
+
 def run_browser_agent(goal: str, start_url: str, max_steps: int = 20):
     print(f"\nGoal: {goal}")
     print(f"Starting at: {start_url or 'https://www.google.com'}")
     print("=" * 50)
 
+    auth_state   = export_cookies()
     history      = []
     last_actions = []
 
     with sync_playwright() as p:
-        print("[Browser] NOTE: Close all Chrome windows before continuing!")
-        input("[Browser] Press Enter when Chrome is fully closed...")
-        browser, context = launch_browser(p)
+        browser, context = launch_browser(p, auth_state)
+        page = context.new_page()
 
         url = start_url.strip() if start_url.strip() else "https://www.google.com"
-
-        # reuse existing page or open a new one
-        if context.pages:
-            page = context.pages[0]
-            print(f"[Browser] Reusing existing page: {page.url}")
-        else:
-            page = context.new_page()
-
-        print(f"[Browser] Navigating to {url} ...")
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=20000)
-        except Exception as e:
-            print(f"[Browser] goto warning (continuing): {e}")
-        try:
-            page.wait_for_selector("body", state="visible", timeout=15000)
-        except Exception:
-            pass
-        print(f"[Browser] Page ready. URL: {page.url}")
-        time.sleep(1)
+        page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        time.sleep(2)
 
         for step in range(max_steps):
             print(f"\n--- Step {step + 1} ---")
