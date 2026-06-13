@@ -139,18 +139,18 @@ def list_directory(path: str = None) -> str:
     path = os.path.expandvars(os.path.expanduser(path.strip()))
     p = Path(path)
     if not p.exists():
-        return f"❌ Path not found: {path}"
+        return f" Path not found: {path}"
     if not p.is_dir():
-        return f"❌ Not a directory: {path}"
+        return f" Not a directory: {path}"
     try:
         items = list(p.iterdir())
         dirs = sorted([i.name for i in items if i.is_dir()])
         files = sorted([i.name for i in items if i.is_file()])
-        result = f"📁 {path}\n"
+        result = f" {path}\n"
         for d in dirs:
-            result += f"  📂 {d}/\n"
+            result += f"  {d}/\n"
         for f in files:
-            result += f"  📄 {f}\n"
+            result += f"  {f}\n"
         return result.strip()
     except PermissionError:
         return f" Permission denied: {path}"
