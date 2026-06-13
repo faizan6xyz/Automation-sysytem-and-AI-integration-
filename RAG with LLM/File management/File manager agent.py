@@ -426,11 +426,11 @@ def _advance(state: dict, max_steps: int = 20):
 with gr.Blocks(title="File Manager Agent") as app:
     agent_state = gr.State(empty_state())
     gr.Markdown("""
-    #  File Manager Agent
-    **Powered by NVIDIA NIM (Llama 3.1-8B)** — manages your files using natural language.\n
-    Safe actions (search, list, info) run automatically.\n
-    Destructive actions (move, delete, organize) always ask you first.
-    """)
+# File Manager Agent
+**Powered by NVIDIA NIM (Llama 3.1-8B)** — manages your files using natural language.<br>
+Safe actions (search, list, info) run automatically.<br>
+Destructive actions (move, delete, organize) always ask you first.
+""")
     with gr.Row():
         with gr.Column(scale=2):
             goal_input = gr.Textbox(
@@ -470,8 +470,8 @@ with gr.Blocks(title="File Manager Agent") as app:
     )
     gr.Markdown("""
     ---
-    > **How it works:** Safe actions (list, search, read) run automatically without asking.
-    > Destructive actions (move, delete, copy, organize) always pause and show you exactly
+    > **How it works:** Safe actions (list, search, read) run automatically without asking.<br>
+    > Destructive actions (move, delete, copy, organize) always pause and show you exactly<br>
     > what will change before you approve. All actions are logged to `file_agent.log`.
     """)
 if __name__ == "__main__":
