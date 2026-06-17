@@ -3,11 +3,12 @@ import os
 import glob
 import re
 import requests
+import time
 from openai import OpenAI
 
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
-    api_key="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"
+    api_key="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"
 )
 NIM_MODEL    = "meta/llama-3.1-8b-instruct"
 MCP_BASE     = "http://localhost:3000/mcp"
@@ -23,11 +24,13 @@ def extract_snapshot_path(text: str) -> str | None:
     return None
 
 def find_and_read_snapshot_file(filename: str) -> str:
-    """Search for a specific snapshot file in .playwright-mcp folders in current and parent directories."""
+    """Search for a specific snapshot file in .playwright-mcp folders."""
     current_dir = os.getcwd()
     while True:
         candidate = os.path.join(current_dir, ".playwright-mcp", filename)
         if os.path.exists(candidate):
+            # Wait briefly to ensure file is fully written
+            time.sleep(0.2) 
             with open(candidate, "r", encoding="utf-8") as f:
                 return f.read()
         parent = os.path.dirname(current_dir)
@@ -37,7 +40,7 @@ def find_and_read_snapshot_file(filename: str) -> str:
     return ""
 
 def find_and_read_latest_snapshot() -> str:
-    """Search for the latest snapshot file in .playwright-mcp folders in current and parent directories."""
+    """Search for the latest snapshot file in .playwright-mcp folders."""
     current_dir = os.getcwd()
     latest_file = None
     latest_mtime = 0
@@ -58,6 +61,7 @@ def find_and_read_latest_snapshot() -> str:
         
     if latest_file:
         print(f"    [found snapshot file: {latest_file}]")
+        time.sleep(0.2) # Ensure file write completion
         with open(latest_file, "r", encoding="utf-8") as f:
             return f.read()
     return ""
@@ -198,10 +202,15 @@ class MCPClient:
     def call_tool(self, name: str, arguments: dict) -> str:
         arguments = self._coerce_args(arguments, name)
         print(f"    coerced: {json.dumps(arguments)[:200]}")
-        result  = self._rpc("tools/call", {"name": name, "arguments": arguments})
+        
+        try:
+            result  = self._rpc("tools/call", {"name": name, "arguments": arguments})
+        except Exception as e:
+            print(f"    [RPC Error]: {e}")
+            return f"### Error\n{str(e)}"
+
         content = result.get("content", [])
         
-        # Handle both 'text' and 'resource' types in the response
         parts = []
         for c in content:
             if c.get("type") == "text":
@@ -213,11 +222,9 @@ class MCPClient:
         text = "\n".join(parts) if parts else ""
         
         if name == "browser_snapshot":
-            # 1. If the MCP server returned the snapshot text directly (not a markdown link)
             if text and len(text) > 20 and not text.startswith("### Snapshot"):
                 return text
             
-            # 2. If it returned a markdown link, extract the filename and read it
             if text:
                 path = extract_snapshot_path(text)
                 if path:
@@ -226,7 +233,6 @@ class MCPClient:
                     if file_content:
                         return file_content
             
-            # 3. Fallback: search for the latest snapshot file in parent directories
             return find_and_read_latest_snapshot() or "Snapshot empty."
             
         return text if text else "OK"
@@ -237,17 +243,11 @@ Find the actual SEARCH INPUT field where a user types text.
 Look for elements with roles like 'combobox', 'textbox', 'searchbox', or 'input'.
 DO NOT pick container elements like 'search', 'form', 'region', or 'generic'.
 
-For example, if you see:
-  - search [ref=e26]:
-    - combobox "Search" [ref=e30]
-You MUST pick e30, not e26.
-
 Reply with ONLY the ref value, nothing else. Example reply: e42
 If you cannot find it, reply: NONE
 """
 
 def pick_search_ref(snapshot: str) -> str | None:
-    """Ask the LLM to find the search box ref from a snapshot."""
     response = client.chat.completions.create(
         model    = NIM_MODEL,
         messages = [
@@ -265,8 +265,7 @@ def pick_search_ref(snapshot: str) -> str | None:
 CONFIRM_PROMPT = """You are given an accessibility tree snapshot of a webpage after a search.
 Did the search succeed? Look for signs of success such as:
 - A list of search results.
-- The actual article/content page for the query (e.g., a heading with the query name).
-- A URL change indicating a search or article page.
+- The actual article/content page for the query.
 Reply with one word: YES or NO
 """
 
@@ -299,27 +298,26 @@ def run_agent(goal: str, start_url: str):
     nav_result = mcp.call_tool("browser_navigate", {"url": start_url})
     print(f"  ↩ {nav_result[:200]}")
 
-    mcp.call_tool("browser_wait_for", {"time": 2})
-
-    # ── Step 2: Get Snapshot ──────────────────────────────────────────────────
-    print("\n--- Step 2: Snapshot ---")
+    # ── Step 2: Post-Login Stabilization ──────────────────────────────────────
+    # CRITICAL: After login, the DOM changes completely. We must wait for stability.
+    print("\n--- Step 2: Stabilize & Snapshot ---")
+    print("  Waiting for page to stabilize after navigation/login...")
+    mcp.call_tool("browser_wait_for", {"time": 5}) 
+    
+    # Force a fresh snapshot capture
     snapshot = mcp.call_tool("browser_snapshot", {})
     
-    # Fallback 1: Try to extract from navigate result if browser_snapshot was empty
+    # Fallbacks if direct capture fails
     if not snapshot or snapshot == "Snapshot empty.":
-        print("  ⚠️ browser_snapshot returned empty. Trying to extract from navigate result...")
         path = extract_snapshot_path(nav_result)
         if path:
-            filename = os.path.basename(path)
-            snapshot = find_and_read_snapshot_file(filename)
+            snapshot = find_and_read_snapshot_file(os.path.basename(path))
             
-    # Fallback 2: Search parent directories for the latest file
     if not snapshot or snapshot == "Snapshot empty.":
-        print("  ⚠️ Still empty. Searching for latest snapshot file in parent directories...")
         snapshot = find_and_read_latest_snapshot()
 
     if not snapshot or snapshot == "Snapshot empty.":
-        print("STUCK: Could not get page snapshot.")
+        print("STUCK: Could not get page snapshot after stabilization.")
         mcp.stop()
         return
 
@@ -333,7 +331,7 @@ def run_agent(goal: str, start_url: str):
     if not ref:
         print("Could not find search box. Trying browser_press_key '/'...")
         mcp.call_tool("browser_press_key", {"key": "/"})
-        mcp.call_tool("browser_wait_for", {"time": 1})
+        mcp.call_tool("browser_wait_for", {"time": 2})
         snapshot = mcp.call_tool("browser_snapshot", {})
         ref = pick_search_ref(snapshot)
 
@@ -348,35 +346,49 @@ def run_agent(goal: str, start_url: str):
 
     # ── Step 4: Type and submit ───────────────────────────────────────────────
     print("\n--- Step 4: Type and submit ---")
-    type_result = mcp.call_tool("browser_type", {
-        "element": "search input",
-        "target":  ref,
-        "text":    query,
-        "submit":  True,
-        "slowly":  False,
-    })
+    
+    def attempt_type(target_ref, query_text):
+        type_result = mcp.call_tool("browser_type", {
+            "element": "search input",
+            "target":  target_ref,
+            "text":    query_text,
+            "submit":  True,
+            "slowly":  False,
+        })
+        return type_result
+
+    type_result = attempt_type(ref, query)
     print(f"  ↩ {type_result[:200]}")
 
-    # Error Recovery: If it failed because we picked a container, click and retry
-    if "Error" in type_result and "not an" in type_result:
-        print("  ⚠️ Type failed (likely picked a container). Clicking to focus and retrying...")
-        mcp.call_tool("browser_click", {"element": "search area", "target": ref})
-        mcp.call_tool("browser_wait_for", {"time": 1})
+    # --- ROBUST ERROR RECOVERY ---
+    if "Error" in type_result or "404" in type_result:
+        print("  ⚠️ Action failed. Re-snapshotting to recover state...")
+        mcp.call_tool("browser_wait_for", {"time": 3})
         
         snapshot = mcp.call_tool("browser_snapshot", {})
-        ref = pick_search_ref(snapshot)
-        
-        if ref:
-            type_result = mcp.call_tool("browser_type", {
-                "element": "search input",
-                "target":  ref,
-                "text":    query,
-                "submit":  True,
-                "slowly":  False,
-            })
-            print(f"  ↩ Retry: {type_result[:200]}")
+        if not snapshot or snapshot == "Snapshot empty.":
+             snapshot = find_and_read_latest_snapshot()
+             
+        if snapshot:
+            print("  [New snapshot captured. Re-evaluating target...]")
+            new_ref = pick_search_ref(snapshot)
+            
+            if new_ref and new_ref != ref:
+                print(f"  [Ref updated: {ref} -> {new_ref}]")
+                ref = new_ref
+                print("  [Retrying action...]")
+                type_result = attempt_type(ref, query)
+                print(f"  ↩ Retry: {type_result[:200]}")
+            elif new_ref == ref:
+                print("  [Ref unchanged. Attempting click-to-focus before retry...]")
+                mcp.call_tool("browser_click", {"element": "search area", "target": ref})
+                mcp.call_tool("browser_wait_for", {"time": 1})
+                type_result = attempt_type(ref, query)
+                print(f"  ↩ Retry after click: {type_result[:200]}")
+            else:
+                print("  ❌ Could not find input field in new snapshot.")
         else:
-            print("  ❌ Could not find input field on retry.")
+            print("  ❌ Failed to capture new snapshot for recovery.")
 
     mcp.call_tool("browser_wait_for", {"time": 3})
 
