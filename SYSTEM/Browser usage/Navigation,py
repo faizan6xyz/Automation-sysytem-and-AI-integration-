@@ -411,18 +411,9 @@ def run_agent(goal: str, start_url: str):
                 print("  [Error] Plan said click but no ref provided.")
         
         elif action == "type_search":
-            query = plan.get("query")
-            if query:
-                ref = pick_search_ref(snapshot)
-                if ref:
-                    mcp.call_tool("browser_type", {
-                        "element": "search input", "target": ref, 
-                        "text": query, "submit": True
-                    })
-                    mcp.call_tool("browser_wait_for", {"time": 5})
-                else:
-                    print("  [Error] Plan said search but no search box found.")
-        
+            #add searching.py
+            addingfile = "Searching.py"
+                    
         elif action == "navigate":
             url = plan.get("url")
             if url:
@@ -441,9 +432,6 @@ def run_agent(goal: str, start_url: str):
         print("\nMax steps reached. Goal may not be achieved.")
 
     mcp.stop()
-    folder_path = ".playwright-mcp"  # Replace with your folder name
-    shutil.rmtree(folder_path)
-
 
 if __name__ == "__main__":
     goal = input("Enter your goal : ").strip()

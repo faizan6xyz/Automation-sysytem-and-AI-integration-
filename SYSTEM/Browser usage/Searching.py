@@ -7,7 +7,7 @@ import time
 from openai import OpenAI
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
-    api_key="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"
+    api_key="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"
 )
 NIM_MODEL    = "meta/llama-3.1-8b-instruct"
 MCP_BASE     = "http://localhost:3000/mcp"
@@ -146,6 +146,12 @@ class MCPClient:
             print("[MCP] 404 — reconnecting...")
             self._session_id = None
             self._handshake()
+            
+            # OPTIONAL: Verify we are still on the right page after reconnect
+            if method == "tools/call" and params.get("name") == "browser_snapshot":
+                print("  [Verifying page state after reconnect...]")
+                # You could optionally check the URL here if needed
+                
             resp = self._do_post(payload)
         resp.raise_for_status()
         if "mcp-session-id" in resp.headers:
@@ -283,6 +289,7 @@ def run_agent(goal: str, start_url: str):
     mcp.call_tool("browser_wait_for", {"time": 2})
     #  Step 2: Get Snapshot 
     print("\n--- Step 2: Snapshot ---")
+    mcp.call_tool("browser_wait_for", {"time": 2})
     snapshot = mcp.call_tool("browser_snapshot", {})
     # Fallbacks for empty snapshot
     if not snapshot or snapshot == "Snapshot empty.":
