@@ -12,7 +12,7 @@ import re
 import time
 import requests
 from openai import OpenAI
-
+import shutil
 # ─────────────────────────── Configuration ────────────────────────────
 
 client = OpenAI(
@@ -21,7 +21,7 @@ client = OpenAI(
 )
 NIM_MODEL = "meta/llama-3.1-8b-instruct"
 MCP_BASE = "http://localhost:3000/mcp"
-MAX_NAV_STEPS = 8  # Increased slightly for complex navigation paths
+MAX_NAV_STEPS = 10 # Increased slightly for complex navigation paths
 
 # ───────────────────────── Snapshot file helpers ──────────────────────
 
@@ -355,7 +355,7 @@ def run_agent(goal: str, start_url: str):
 
     # Initial Navigation
     mcp.call_tool("browser_navigate", {"url": start_url})
-    mcp.call_tool("browser_wait_for", {"time": 3})
+    mcp.call_tool("browser_wait_for", {"time": 7})
 
     last_action_signature = "" 
 
@@ -441,6 +441,8 @@ def run_agent(goal: str, start_url: str):
         print("\nMax steps reached. Goal may not be achieved.")
 
     mcp.stop()
+    folder_path = ".playwright-mcp"  # Replace with your folder name
+    shutil.rmtree(folder_path)
 
 
 if __name__ == "__main__":
