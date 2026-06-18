@@ -275,7 +275,7 @@ def confirm_success(snapshot: str, query: str) -> bool:
     ans = response.choices[0].message.content.strip().upper()
     print(f"    [LLM success check]: {ans}")
     return ans.startswith("Y")
-def run_agent(goal: str, start_url: str):
+def run_agent1(goal: str, start_url: str):
     mcp = MCPClient()
     mcp.start()
     mcp.list_tools()
@@ -370,4 +370,4 @@ def run_agent(goal: str, start_url: str):
 if __name__ == "__main__":
     goal      = input("Enter your goal : ").strip()
     start_url = input("Starting URL    : ").strip()
-    run_agent(goal, start_url)
+    run_agent1(goal, start_url)

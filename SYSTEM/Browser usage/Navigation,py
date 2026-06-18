@@ -432,6 +432,9 @@ def run_agent(goal: str, start_url: str):
         print("\nMax steps reached. Goal may not be achieved.")
 
     mcp.stop()
+    folder_path = ".playwright-mcp"  # Replace with your folder name
+    shutil.rmtree(folder_path)
+
 
 if __name__ == "__main__":
     goal = input("Enter your goal : ").strip()
