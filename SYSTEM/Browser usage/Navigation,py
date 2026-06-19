@@ -5,6 +5,7 @@ import re
 import time
 import requests
 from openai import OpenAI
+import threading
 import shutil
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
@@ -48,12 +49,50 @@ def find_and_read_latest_snapshot() -> str:
         with open(latest_file, "r", encoding="utf-8") as f:
             return f.read()
     return ""
+# In your MCPClient class, update _do_post and add keepalive
+def _do_post(self, payload: dict) -> requests.Response:
+    try:
+        resp = requests.post(
+            self.base_url, 
+            json=payload,
+            headers=self._headers(), 
+            timeout=60  # Increase timeout from 30 to 60
+        )
+        return resp
+    except requests.exceptions.Timeout:
+        print("[MCP] Request timed out - session may be dead")
+        raise RuntimeError("MCP timeout")
 class MCPClient:
     def __init__(self, base_url: str = MCP_BASE):
         self.base_url = base_url
         self._req_id = 0
         self._session_id = None
         self._tools = []
+        self._keepalive_thread = None
+        self._stop_keepalive = threading.Event()
+    
+    def _keepalive_loop(self):
+        """Send periodic pings to prevent session timeout"""
+        while not self._stop_keepalive.is_set():
+            try:
+                self._rpc("ping", {})  # or tools/list if ping isn't supported
+            except Exception:
+                pass
+            self._stop_keepalive.wait(timeout=15)  # Ping every 15 seconds
+    
+    def start(self):
+        self._handshake()
+        # Start keepalive thread
+        self._stop_keepalive.clear()
+        self._keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
+        self._keepalive_thread.start()
+        print("[MCP] Handshake complete. Keepalive started.")
+    
+    def stop(self):
+        self._stop_keepalive.set()
+        if self._keepalive_thread:
+            self._keepalive_thread.join(timeout=5)
+        print("[MCP] Done.")
     def _next_id(self) -> int:
         self._req_id += 1
         return self._req_id
@@ -137,12 +176,6 @@ class MCPClient:
             else:
                 coerced[k] = v
         return coerced
-    def start(self):
-        self._handshake()
-        print("[MCP] Handshake complete.")
-
-    def stop(self):
-        print("[MCP] Done.")
 
     def list_tools(self) -> list[dict]:
         if self._tools:
@@ -214,25 +247,39 @@ Current Goal: "{goal}"
 Current Page Title/URL info is in the snapshot.
 
 Available Actions:
-1. "click": Click a link or button. You MUST provide the 'ref' of the element.
+1. "click": Click a link, button, OR FOLDER. You MUST provide the 'ref' of the element.
 2. "type_search": Type a query into the main search bar and submit. Provide 'query'.
-3. "navigate": Go to a direct URL if you know it (e.g., youtube.com/feed/history).
+3. "navigate": Go to a direct URL if you know it.
 4. "done": You have reached the goal. Set 'success' to true or false.
 
+CRITICAL GOOGLE DRIVE RULES:
+- SIDEBAR ≠ MAIN CONTENT: The left sidebar contains navigation links (My Drive, Shared, Bin). 
+  The MAIN CONTENT AREA (center/right) contains files and folders.
+- TO OPEN A FOLDER: You must click the folder IN THE MAIN CONTENT AREA, NOT the sidebar.
+- If the goal mentions a folder name (e.g., "Colab Notebooks"), look for that folder 
+  in the main grid/list view, NOT in the sidebar navigation.
+- NEVER click a sidebar link that matches the CURRENT page title. 
+  Example: If you're on "My Drive" and see "My Drive" in sidebar, DO NOT click it.
+- When searching for a folder, check BOTH the sidebar AND main content, but prioritize 
+  main content for opening/navigating into folders.
+
 Rules:
-- Look for links/buttons in the snapshot that match the goal semantically.
-- If you see a search bar and no obvious link, use "type_search".
+- Look for links/buttons/folders in the snapshot that match the goal semantically.
+- If you see a search bar and no obvious link/folder, use "type_search".
 - Do NOT click random things. Be precise.
 - Reply with ONLY a JSON object. No markdown fences.
 
-Example Reply for clicking a link:
-{{"action": "click", "ref": "e12", "reason": "Link says 'Watch History'"}}
+Example Reply for clicking a FOLDER in main content:
+{{"action": "click", "ref": "e45", "reason": "Folder 'Colab Notebooks' found in main content grid"}}
+
+Example Reply for clicking a sidebar navigation link:
+{{"action": "click", "ref": "e12", "reason": "Sidebar link 'Bin' to navigate to trash section"}}
 
 Example Reply for searching:
-{{"action": "type_search", "query": "liked videos", "reason": "No direct link found, searching instead"}}
+{{"action": "type_search", "query": "Colab Notebooks", "reason": "Folder not visible in current view, searching instead"}}
 
 Example Reply if done:
-{{"action": "done", "success": true, "reason": "Page title is 'Watch History'"}}
+{{"action": "done", "success": true, "reason": "Inside Colab Notebooks folder, seeing .ipynb files"}}
 """
 def plan_navigation_step(goal: str, snapshot: str) -> dict:
     try:
@@ -327,7 +374,7 @@ def run_agent(goal: str, start_url: str):
     print("=" * 60)
     # Initial Navigation
     mcp.call_tool("browser_navigate", {"url": start_url})
-    mcp.call_tool("browser_wait_for", {"time": 7})
+    mcp.call_tool("browser_wait_for", {"time": 5})
     last_action_signature = "" 
     for step in range(1, MAX_NAV_STEPS + 1):
         print(f"\n--- Step {step}: Planning ---")
