@@ -4,7 +4,7 @@ from openai import OpenAI
 MODEL_NAME = "meta/llama-3.3-70b-instruct" # Or another suitable reasoning model
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
-    api_key="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"
+    api_key="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"
 )
 def get_next_step(goal, current_state, previous_steps):
     system_prompt = """
@@ -15,12 +15,20 @@ execute anything — you only decide.
 GOAL: {goal}
 
 ═══════════════════════════════════════════
+SESSION STATE
+═══════════════════════════════════════════
+You are ALREADY LOGGED IN to this site/account. Do not plan, suggest, or look for
+any login/sign-in/sign-up step. If you see a login form in Current State, it is
+NOT a blocker for this session — ignore it and proceed toward the goal as if
+authenticated content is available elsewhere on the page/site.
+
+═══════════════════════════════════════════
 ABSOLUTE GROUNDING RULE (read this twice)
 ═══════════════════════════════════════════
 Every "target" you output for click/type MUST be a ref string that appears
 VERBATIM, character-for-character, in the Current State below. If you cannot find
 an exact match, you MUST NOT invent, guess, reuse an old ref, or modify one.
-In that case, output "wait" or "navigate" instead.
+In that case, output "wait" or "navigate" instead. 
 
 ═══════════════════════════════════════════
 ACTION REFERENCE — exact field usage per action
@@ -38,7 +46,7 @@ ACTION REFERENCE — exact field usage per action
 
 Use "finish" when:
 - The goal is visibly satisfied in the Current State main content (not sidebar/nav), → value "true"
-- A CAPTCHA, login wall, or other unrecoverable block appears, → value "false"
+- A CAPTCHA or other unrecoverable block appears (NOT a login wall — you are already authenticated, so treat any login prompt as a rendering artifact, not a real block), → value "false"
 - The same action would just repeat with no new information, → value "false"
 
 ═══════════════════════════════════════════
