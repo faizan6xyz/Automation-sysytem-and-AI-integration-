@@ -29,6 +29,7 @@ Every "target" you output for click/type MUST be a ref string that appears
 VERBATIM, character-for-character, in the Current State below. If you cannot find
 an exact match, you MUST NOT invent, guess, reuse an old ref, or modify one.
 In that case, output "wait" or "navigate" instead. 
+Don't use type and click in for search , just use search action for it . 
 
 ═══════════════════════════════════════════
 ACTION REFERENCE — exact field usage per action
@@ -38,6 +39,7 @@ ACTION REFERENCE — exact field usage per action
 | navigate      | full https:// URL               | null               |
 | click         | exact ref from Current State     | null               |
 | type          | exact ref from Current State     | text to type       |
+| search        | exact ref of search input        | search query text  |
 | wait          | null                             | seconds (integer)  |
 | scroll        | "up" or "down"                   | pixels (integer)   |
 | extract_text  | null                             | null               |
@@ -88,6 +90,7 @@ FINAL REMINDER
     except Exception as e:
         print(f"Error calling NVIDIA NIM: {e}")
         return None
+steps = []
 def execute_automation(goal, max_steps=10):
     print(f" Starting Automation for Goal: '{goal}'\n")
     current_state = "Browser is open on homepage."
@@ -95,6 +98,7 @@ def execute_automation(goal, max_steps=10):
     for i in range(max_steps):
         print(f"--- Step {i+1} ---")
         next_step_json = get_next_step(goal, current_state, previous_steps)
+        steps.append(next_step_json)
         if not next_step_json:
             print("Failed to get a valid step from the LLM.")
             break     
@@ -108,3 +112,4 @@ def execute_automation(goal, max_steps=10):
 if __name__ == "__main__":
     user_goal = input("Whats your goal : ")
     execute_automation(user_goal)
+    print(steps)
