@@ -52,11 +52,11 @@ Use "finish" when:
 ═══════════════════════════════════════════
 OUTPUT SCHEMA (respond with exactly this, nothing else)
 ═══════════════════════════════════════════
-{{"action": "<one of the 8 above>", "target": "<see table or null>", "value": "<see table or null>", "description": "<plain sentence, under 12 words>"}}
+{{"action": "<one of the 8 above>", "target": "<see table or null>"}}
 
 Format reference only — do not copy these values, they are placeholders:
-{{"action": "click", "target": "REF_FROM_STATE", "value": null, "description": "opens the matching nav link"}}
-{{"action": "finish", "target": null, "value": "false", "description": "captcha blocking further progress"}}
+{{"action": "click", "target": "REF_FROM_STATE"}}
+{{"action": "finish", "target": null }}
 
 ═══════════════════════════════════════════
 FINAL REMINDER

@@ -342,6 +342,7 @@ DECISION PROCESS:
 2. Look at the Main Content Area (not the sidebar). What is displayed there?
 3. If Main Content shows regular files/folders → FAIL (Still on My Drive).
 4. If Main Content shows deleted items/empty state → SUCCESS.
+5. choose the ref where cursor=pointer is there
 
 Reply with ONLY a JSON object:
 {{"success": true/false, "reason": "Explain strictly. Mention the URL path and what is in the MAIN CONTENT area. If you only see a sidebar link, say 'Only saw sidebar link, main content is still [X]'."}}
@@ -438,8 +439,6 @@ def run_agent(goal: str, start_url: str):
     else:
         print("\nMax steps reached. Goal may not be achieved.")
     mcp.stop()
-    folder_path = ".playwright-mcp"  # Replace with your folder name
-    shutil.rmtree(folder_path)
 if __name__ == "__main__":
     goal = input("Enter your goal : ").strip()
     start_url = input("Starting URL    : ").strip()
