@@ -3,32 +3,35 @@ import faiss
 import os
 from fastembed import TextEmbedding
 from rank_bm25 import BM25Okapi
-def buildtext_vector(text , folder_path="../Data", chunk_path="../" , index_path="rag_index.faiss" , chunks_path="chunks.npy"):
-    model = TextEmbedding("BAAI/bge-base-en-v1.5")  # same model, no hub needed
-    new_embedding = np.array(list(model.embed([text])), dtype=np.float32)
-    full_index_path  = os.path.join(chunk_path, index_path)
-    full_chunks_path = os.path.join(chunk_path, chunks_path)
+_model = TextEmbedding("BAAI/bge-base-en-v1.5")
+def buildtext_vector(text, folder_path="../Data", chunk_path="../",
+                      index_path="rag_index.faiss", chunks_path="chunks.npy"):
+    new_embedding = np.array(list(_model.embed([text])), dtype=np.float32)
     faiss.normalize_L2(new_embedding)
     dimension = new_embedding.shape[1]
+    full_index_path = os.path.join(chunk_path, index_path)
+    full_chunks_path = os.path.join(chunk_path, chunks_path)
     if os.path.exists(full_index_path):
         index = faiss.read_index(full_index_path)
         print(f"Loaded existing FAISS index ({index.ntotal} vectors)")
     else:
         index = faiss.IndexFlatIP(dimension)
         print("Created new FAISS index")
-    index.add(new_embedding)
-    faiss.write_index(index, full_index_path)
-    print("Vectors stored:", index.ntotal)
     existing_chunks = np.load(full_chunks_path, allow_pickle=True).tolist() \
-                      if os.path.exists(full_chunks_path) else []
+                       if os.path.exists(full_chunks_path) else []
+    index.add(new_embedding)
     existing_chunks.append(text)
-    np.save(full_chunks_path, np.array(existing_chunks))
+    tmp_index_path = full_index_path + ".tmp"
+    tmp_chunks_path = full_chunks_path + ".tmp"
+    faiss.write_index(index, tmp_index_path)
+    np.save(tmp_chunks_path, np.array(existing_chunks, dtype=object))
+    os.replace(tmp_index_path, full_index_path)
+    os.replace(tmp_chunks_path, full_chunks_path)
+    print("Vectors stored:", index.ntotal)
     print(f"chunks.npy updated → {len(existing_chunks)} chunk(s) total")
     bm25 = BM25Okapi([chunk.lower().split() for chunk in existing_chunks])
     print("BM25 index rebuilt over all chunks.")
     return bm25
-
-
 
 
 
