@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import faiss
 import pickle
@@ -6,33 +7,81 @@ from fastembed import TextEmbedding
 from rank_bm25 import BM25Okapi
 os.environ["FASTEMBED_CACHE_PATH"] = r"C:\Users\faiza\fastembed_models"
 MODEL_NAME = "BAAI/bge-base-en-v1.5"
-CHUNK_SIZE_TOKENS = 400  # Safe limit for BGE (max 512)
-OVERLAP_TOKENS = 50
-BATCH_SIZE = 32  # Process embeddings in batches to save RAM
+CHUNK_SIZE_TOKENS = 400      # Hard cap — safety net if a topic runs long
+MIN_CHUNK_TOKENS = 50        # Merge chunks smaller than this into a neighbor
+BATCH_SIZE = 32              # Process embeddings in batches to save RAM
+PERCENTILE_THRESHOLD = 25    # Lower percentile of similarity drops = cut point
 _model = TextEmbedding(MODEL_NAME)
-def chunk_text_smart(text, chunk_size=CHUNK_SIZE_TOKENS, overlap=OVERLAP_TOKENS):
-    words = text.split()
-    chunks = []
-    start = 0
-    overlap_words = max(1, int(overlap / 1.3))
-    while start < len(words):
-        current_chunk_words = words[start:]
-        end_offset = 0
-        current_token_count = 0
-        for i, word in enumerate(current_chunk_words):
-            # Rough token count per word (1 + length/4 is a common heuristic)
-            token_est = 1 + len(word) / 4
-            if current_token_count + token_est > chunk_size:
-                break
-            current_token_count += token_est
-            end_offset = i + 1
-        if end_offset == 0:
-            end_offset = 1  # Prevent infinite loop on a single huge word
-        chunk = " ".join(words[start:start + end_offset])
-        chunks.append(chunk)
-        advance = max(1, end_offset - overlap_words)
-        start += advance
-    return chunks
+def estimate_tokens(text: str) -> float:
+    return sum(1 + len(w) / 4 for w in text.split())
+def split_sentences(text: str):
+    text = text.strip()
+    if not text:
+        return []
+    raw = re.split(r'(?<=[.!?])\s+', text)
+    return [s.strip() for s in raw if s.strip()]
+def chunk_text_semantic(text,chunk_size=CHUNK_SIZE_TOKENS,min_chunk_tokens=MIN_CHUNK_TOKENS,percentile=PERCENTILE_THRESHOLD):
+    sentences = split_sentences(text)
+    if len(sentences) <= 1:
+        return [text] if text else []
+    sentence_embeddings = np.stack(list(_model.embed(sentences))).astype(np.float32)
+    faiss.normalize_L2(sentence_embeddings)
+    sims = np.array([
+        float(np.dot(sentence_embeddings[i], sentence_embeddings[i + 1]))
+        for i in range(len(sentence_embeddings) - 1)
+    ])
+    threshold = np.percentile(sims, percentile)
+    cut_after = set(i for i, s in enumerate(sims) if s <= threshold)
+    raw_chunks = []
+    current = [sentences[0]]
+    for i in range(1, len(sentences)):
+        if (i - 1) in cut_after:
+            raw_chunks.append(current)
+            current = [sentences[i]]
+        else:
+            current.append(sentences[i])
+    raw_chunks.append(current)
+    merged_chunks = []
+    buffer = []
+    buffer_tokens = 0
+    for chunk_sentences in raw_chunks:
+        chunk_text_str = " ".join(chunk_sentences)
+        chunk_tokens = estimate_tokens(chunk_text_str)
+        buffer.extend(chunk_sentences)
+        buffer_tokens += chunk_tokens
+        if buffer_tokens >= min_chunk_tokens:
+            merged_chunks.append(" ".join(buffer))
+            buffer = []
+            buffer_tokens = 0
+    if buffer:  # leftover tail too small — attach to last chunk if possible
+        if merged_chunks:
+            merged_chunks[-1] = merged_chunks[-1] + " " + " ".join(buffer)
+        else:
+            merged_chunks.append(" ".join(buffer))
+    final_chunks = []
+    for chunk in merged_chunks:
+        if estimate_tokens(chunk) <= chunk_size:
+            final_chunks.append(chunk)
+        else:
+            words = chunk.split()
+            sub_start = 0
+            while sub_start < len(words):
+                sub_chunk_words = []
+                token_count = 0
+                idx = sub_start
+                while idx < len(words):
+                    t = 1 + len(words[idx]) / 4
+                    if token_count + t > chunk_size:
+                        break
+                    token_count += t
+                    sub_chunk_words.append(words[idx])
+                    idx += 1
+                if not sub_chunk_words:  # single huge word edge case
+                    sub_chunk_words = [words[sub_start]]
+                    idx = sub_start + 1
+                final_chunks.append(" ".join(sub_chunk_words))
+                sub_start = idx
+    return final_chunks
 def load_existing_data(chunk_path, index_path):
     full_index_path = os.path.join(chunk_path, index_path)
     full_chunks_path = os.path.join(chunk_path, "chunks.npy")
@@ -40,7 +89,7 @@ def load_existing_data(chunk_path, index_path):
     index = None
     existing_chunks = []
     existing_metadata = []
-    dimension = 768 
+    dimension = 768
     if os.path.exists(full_index_path):
         index = faiss.read_index(full_index_path)
         dimension = index.d
@@ -83,7 +132,7 @@ def build_index(file_name,
         index = faiss.IndexFlatIP(dimension)
     with open(file_path, "r", encoding="utf-8") as f:
         text = f.read().strip()
-    new_chunks = chunk_text_smart(text)
+    new_chunks = chunk_text_semantic(text)
     print(f"Generated {len(new_chunks)} new chunks from {file_name}")
     existing_set = set(existing_chunks)
     unique_new_chunks = []
@@ -117,8 +166,3 @@ def build_index(file_name,
     bm25 = BM25Okapi(tokenized_corpus)
     save_data(index, final_chunks, final_metadata, chunk_path, index_path, bm25)
     print(f"Indexing complete. Total vectors: {index.ntotal}")
-if __name__ == "__main__":
-    try:
-        build_index("testing.txt")
-    except Exception as e:
-        print(f"Error during indexing: {e}")
