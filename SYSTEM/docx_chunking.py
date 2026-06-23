@@ -136,3 +136,4 @@ def save_docx(docx_path, threshold=0.75, max_chunk_size=20):
     print(f"{docx_path} saved to database")
 if __name__ == "__main__":
     save_docx("SYSTEM/data/test.docx")
+    

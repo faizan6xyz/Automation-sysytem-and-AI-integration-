@@ -122,8 +122,7 @@
                 text += "\n"
             return text
 
-'''
-"""
+
 Comparison Table: Format Preservation
 
 | Library          | Headers/Titles | Tables      | Columns     | Lists       | Output Format    |
@@ -132,5 +131,7 @@ Comparison Table: Format Preservation
 | pdfplumber       | ❌ Manual      | ✅✅ Best   | ✅✅ Best   | ❌ Manual   | Raw Text + Coords|
 | PyMuPDF (fitz)   | ❌ Lost        | ❌ Poor     | ❌ Jumbled  | ❌ Lost     | Raw String       |
 | Unstructured     | ✅✅ Best      | ✅✅ Best   | ✅✅ Best   | ✅✅ Best   | JSON/Elements    |
-"""
+
+Unstructured: rating across all categories, it is a comprehensive framework built specifically to ingest and parse many different file types (PDFs, Word docs, PowerPoints, HTML, emails, images, etc.) into a standardized format (JSON/Elements).
+'''
 
