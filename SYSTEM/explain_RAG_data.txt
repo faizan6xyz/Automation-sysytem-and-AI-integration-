@@ -1,0 +1,42 @@
+🟢 bm25.pkl
+    Saved BM25 keyword search index
+    → stores the tokenized chunks + word frequencies
+    → used for exact keyword matching at query time
+    → in your current code you DON'T need this
+    (you rebuild BM25 from chunks.npy every time)
+
+📄 chunks.npy
+    Stores all your raw text chunks as a numpy array
+
+    Example inside:
+    [
+    "neural networks learn by adjusting weights...",
+    "backpropagation is used to compute gradients...",
+    "the learning rate controls how fast...",
+    ]
+    → used by BM25 for keyword search
+    → used to return actual text in results
+
+📄 metadata.npy
+    Stores info ABOUT each chunk as a numpy array
+
+    Example inside:
+    [
+    {"source": "test.pdf", "chunk_id": 0},
+    {"source": "test.pdf", "chunk_id": 1},
+    {"source": "test.pdf", "chunk_id": 2},
+    ]
+    → tells you WHICH file each result came from
+    → chunk_id links it back to chunks.npy
+
+📄 rag_index.faiss
+    Stores all chunk embeddings as 768-dim vectors
+
+    Example inside:
+    [
+    [0.12, -0.45, 0.87, ... ],  ← chunk 0 as vector
+    [0.33,  0.21, 0.54, ... ],  ← chunk 1 as vector
+    [0.91, -0.12, 0.44, ... ],  ← chunk 2 as vector
+    ]
+    → used for semantic/meaning-based search
+    → FAISS searches this to find similar vectors
