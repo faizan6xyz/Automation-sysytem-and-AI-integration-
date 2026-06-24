@@ -1,0 +1,46 @@
+Base64 (string encoding)
+    What it is: Encodes raw image bytes into an ASCII string, so binary data can be embedded in text-based formats (JSON, HTML, API payloads).
+    
+    Advantages:
+        Transport-friendly. Needed when sending images through text-only channels — JSON APIs (like Claude/GPT vision APIs), web requests, databases that don't handle binary well.
+        Self-contained. No separate file reference needed — image data lives directly inside the JSON/text payload.
+        Easy to embed. HTML <img src="data:image/png;base64,...">, no separate file serving required.
+
+    Disadvantages:
+        ~33% size bloat. Base64 encoding inflates data size by roughly 4/3 vs raw bytes — costly for large images or many images in a batch.
+        Not directly usable — has to be decoded back to bytes → image → array before any actual processing (model inference, CV ops) can happen.
+        CPU overhead for encode/decode, especially at scale.
+        Not for compute — it's purely a transport/storage format, never something a model or OpenCV operates on directly.
+
+    When you use it: Sending images to multimodal LLM APIs (your image-to-text pipelines), storing images inline in JSON-based datasets, web transmission.
+
+Vision Encoder (model component)
+    What it is: A neural network module (e.g. ViT, CLIP's image encoder, ResNet backbone) that converts a raw image into a dense feature representation — usually a sequence of embeddings or a single feature vector.
+    
+    Advantages:
+        Semantic compression. Turns pixels into meaningful features (edges → shapes → objects → semantics) that downstream models (classifiers, LLMs in multimodal pipelines) can actually reason over.
+        Transfer learning. Pretrained encoders (CLIP, DINO, BGE-style vision encoders) give strong general-purpose features without training from scratch — relevant to your multimodal LLM work.
+        Enables cross-modal tasks. This is literally how image+text models align — encoder outputs get projected into the same embedding space as text tokens (relevant to your RAG/multimodal pipelines if you ever do image-grounded retrieval).
+
+    Disadvantages:
+        Compute-heavy. Needs a GPU forward pass; on your RTX 2050 (4GB VRAM), larger ViT variants will be tight — you'd want quantized/smaller encoders (e.g. CLIP ViT-B/32 over ViT-L).
+        Lossy. You lose pixel-level detail — fine for classification/retrieval, bad if you need exact reconstruction or pixel-precise localization (like your helmet bounding-box detection, which needs spatial detection heads, not just global embeddings).
+        Encoder choice matters a lot. Wrong encoder for the task (e.g. using a classification-pretrained encoder for fine-grained OCR) gives weak features.
+
+    When you use it: Image retrieval/similarity search, multimodal embeddings for RAG, feeding into vision-language models, zero-shot classification.
+
+Tensor (numerical array)
+    What it is: The raw numerical representation of image data as a multi-dimensional array — typically shape (H, W, C) or (C, H, W), values usually normalized to [0,1] or [-1,1].
+    
+    Advantages:
+        Native compute format. This is what every CV library and ML framework actually operates on — OpenCV arrays, PyTorch/TensorFlow tensors. No conversion overhead once you're here.
+        GPU-accelerated ops. Batched tensor operations (resize, normalize, augment) run extremely fast on GPU.
+        Precise and lossless (relative to the source) — full pixel data is preserved, nothing is compressed away like with an encoder.
+        Framework interoperability — PyTorch ↔ NumPy ↔ OpenCV conversions are near-zero-cost since they share memory layout conventions (with axis reordering).
+
+    Disadvantages:
+        Large memory footprint. A single 1080p RGB image as float32 tensor is ~25MB; batches scale fast and can blow VRAM on a 4GB card.
+        Not transportable as-is. Can't put a tensor directly into JSON/API calls — needs to be serialized (often back to base64 or saved as a file) for transport.
+        Format mismatches are a common bug source — channel order (RGB vs BGR), axis order (HWC vs CHW), and normalization range mismatches between OpenCV/PyTorch/TF cause silent errors.
+
+    When you use it: The actual processing stage — model input/output, augmentation, any numeric computation (resizing, filtering, inference).
