@@ -1,0 +1,33 @@
+1. The API Method (The "Messenger" Approach)
+When you use a service like Claude, OpenAI, or Gemini, you are sending data over the internet using HTTP requests. Since the internet and JSON (the language of APIs) are text-based, they can't handle raw binary image files directly.
+    
+    Step A: Encoding: Your script takes the image file (binary) and converts it into a Base64 string (text). This makes the image "safe" to travel through text-only channels.
+    
+    Step B: Transmission: This long string is wrapped in a JSON packet and sent to the provider's server.
+    
+    Step C: Decoding: The provider's server receives the JSON, extracts the string, and converts it back into binary pixels.
+    
+    Why it feels slow: You are paying for the time it takes to encode, upload, decode, and process. The "bloat" we discussed earlier happens here because Base64 adds ~33% extra weight to the file.
+
+
+2. The Local Method (The "Direct Feed" Approach)
+When you run models locally (using Ollama, LM Studio, or NVIDIA NIMs), you bypass the internet entirely. Your Python script and the LLM are likely running on the same machine or within the same local network.
+    
+    Step A: Loading: Your script uses a library like Pillow or OpenCV to load the image into RAM as a NumPy array or a Tensor (a grid of numbers representing pixel colors).
+    
+    Step B: Direct Memory Access: Instead of turning it into text, you pass this array directly to the model's inference engine.
+    
+    Why it's faster: There is no encoding/decoding overhead. The data stays in its native "number" format, which is exactly what the GPU needs to do math.
+
+
+3. The Vision Encoder (The "Translator")
+This is the most important part. Whether you use an API or a local method, the LLM itself cannot process pixels. LLMs are designed to predict the next word in a sequence of numbers (tokens).
+    
+    The Vision Encoder (often a model like CLIP, SigLIP, or ViT) acts as a bridge:
+        
+        Patchification: It takes the image and chops it into small squares (e.g., 14x14 pixels each).
+        
+        Embedding: It looks at each square and converts it into a Vector (a list of ~1,000 numbers). This vector represents the "meaning" of that patch (e.g., "this patch contains a curved black line").
+        
+        Projection: These visual vectors are then "projected" into the same mathematical space as the LLM's text tokens.
+        

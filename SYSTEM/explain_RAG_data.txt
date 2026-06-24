@@ -1,11 +1,11 @@
-🟢 bm25.pkl
+bm25.pkl
     Saved BM25 keyword search index
     → stores the tokenized chunks + word frequencies
     → used for exact keyword matching at query time
     → in your current code you DON'T need this
     (you rebuild BM25 from chunks.npy every time)
 
-📄 chunks.npy
+chunks.npy
     Stores all your raw text chunks as a numpy array
 
     Example inside:
@@ -17,7 +17,7 @@
     → used by BM25 for keyword search
     → used to return actual text in results
 
-📄 metadata.npy
+metadata.npy
     Stores info ABOUT each chunk as a numpy array
 
     Example inside:
@@ -29,7 +29,7 @@
     → tells you WHICH file each result came from
     → chunk_id links it back to chunks.npy
 
-📄 rag_index.faiss
+rag_index.faiss
     Stores all chunk embeddings as 768-dim vectors
 
     Example inside:
