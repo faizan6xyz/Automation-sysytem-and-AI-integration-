@@ -44,3 +44,55 @@ Tensor (numerical array)
         Format mismatches are a common bug source — channel order (RGB vs BGR), axis order (HWC vs CHW), and normalization range mismatches between OpenCV/PyTorch/TF cause silent errors.
 
     When you use it: The actual processing stage — model input/output, augmentation, any numeric computation (resizing, filtering, inference).
+
+
+
+
+# ============================================================
+#         IMAGE REPRESENTATION COMPARISON TABLE
+# ============================================================
+#
+#  Feature              | Base64          | Tensor              | ViT Embedding
+#  ---------------------|-----------------|---------------------|----------------------
+#  Output type          | Text string     | 3D number array     | 1D/2D vector
+#  Example shape        | "/9j/4AAQ..."   | [3, 224, 224]       | [1, 512]
+#  Size                 | ~33% larger     | Fixed (e.g 150KB)   | Very small (~2KB)
+#  Purpose              | Send over net   | Feed to neural net  | LLM understanding
+#  Reversible?          | ✅ Yes          | ✅ Yes (mostly)     | ❌ No
+#  Semantic meaning?    | ❌ No           | ❌ No               | ✅ Yes
+#  Human readable?      | ❌ No           | ❌ No               | ❌ No
+#  Compression?         | ❌ No           | ❌ No               | ✅ Yes (high)
+#  Used in local model? | ❌ Rarely       | ✅ Always           | ✅ Always
+#  Used in API calls?   | ✅ Always       | ❌ No               | ❌ No
+#  Requires GPU?        | ❌ No           | ❌ No               | ✅ Yes
+#  Processing speed     | ⚡ Very fast    | ⚡ Fast             | 🐢 Slow (model pass)
+#  Stage in pipeline    | Transport       | Pre-processing      | Post-encoding
+#  Data format          | ASCII string    | Float32/Float16     | Float32
+#  Captures color?      | ✅ Yes          | ✅ Yes              | ✅ Yes (abstract)
+#  Captures texture?    | ✅ Yes          | ✅ Yes              | ✅ Yes (abstract)
+#  Captures objects?    | ❌ No           | ❌ No               | ✅ Yes
+#  Captures emotion?    | ❌ No           | ❌ No               | ✅ Yes
+#  Example use case     | OpenAI API      | torchvision input   | CLIP similarity
+#  Library used         | base64 (stdlib) | torchvision/numpy   | transformers (HF)
+#
+# ============================================================
+#  PIPELINE FLOW:
+#
+#  image.jpg
+#      │
+#      ├──→ BASE64     → "/9j/4AAQ..."     (for sending over HTTP/JSON)
+#      │
+#      ├──→ TENSOR     → [3, 224, 224]     (pixel values as floats)
+#      │                        │
+#      │                        └──→ VIT ENCODER → [1, 512]  (semantic meaning)
+#      │
+#      └──→ All three are different representations of the SAME image
+#
+# ============================================================
+#  WHEN TO USE WHICH:
+#
+#  Use BASE64    → calling OpenAI / Anthropic / Gemini vision APIs
+#  Use TENSOR    → feeding image into any PyTorch/TF model locally
+#  Use ViT EMBED → comparing image similarity, RAG with images,
+#                  passing image context to an LLM
+# ============================================================

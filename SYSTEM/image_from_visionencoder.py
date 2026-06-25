@@ -4,7 +4,6 @@ from PIL import Image
 import os
 _model_cache = {}
 def _get_vision_model(model_name="openai/clip-vit-base-patch32"):
-    """Load and cache vision model to avoid repeated loading"""
     if model_name not in _model_cache:
         print(f"Loading model: {model_name}...")
         processor = AutoProcessor.from_pretrained(model_name)
@@ -56,8 +55,6 @@ def compute_similarity(embedding1, embedding2):
     # Cosine similarity
     similarity = torch.mm(emb1_norm, emb2_norm.T).item()
     return similarity
-
-
 if __name__ == "__main__":
     # Single image
     embedding = run_vision_encoder("n.png")
