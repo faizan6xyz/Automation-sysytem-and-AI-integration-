@@ -34,7 +34,7 @@ while True:
     if retrieved:
         retrieved_chunks = [item['text'] for item in retrieved]
         top_score = max(item['score'] for item in retrieved)
-        if retrieved_chunks:
+        if retrieved_chunks and top_score >= SCORE_THRESHOLD:  # ✅ Threshold condition added
             context = "\n\n".join(retrieved_chunks)
             print(f"[RAG Active | Found {len(retrieved_chunks)} chunks | Top Score: {top_score:.4f}]")
             rag_prompt = (
@@ -43,7 +43,10 @@ while True:
                 f"Answer:"
             )
         else:
-            print("[RAG Skipped - No relevant chunks found]")
+            if retrieved_chunks:
+                print(f"[RAG Skipped - Score {top_score:.4f} below threshold {SCORE_THRESHOLD}]")  # ✅ Informative message
+            else:
+                print("[RAG Skipped - No relevant chunks found]")
             rag_prompt = user_input
     else:
         print("[RAG Skipped - No results]")
@@ -61,8 +64,7 @@ while True:
             repetition_penalty=1.05,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.eos_token_id,
-            streamer=streamer
-        )
+            streamer=streamer        )
     response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
     print()
     messages[-1] = {"role": "user", "content": user_input}
