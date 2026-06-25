@@ -7,14 +7,14 @@ model_name = "Qwen/Qwen2.5-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map="auto")
 streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-HISTORY_FILE = "chat_history.json"
+HISTORY_FILE = "SYSTEM/chat_history.json"
 if os.path.exists(HISTORY_FILE):
     with open(HISTORY_FILE, "r", encoding="utf-8") as f:
         content = f.read().strip()
         messages = json.loads(content) if content else []
 else:
     messages = [{"role": "system", "content": ("You are a helpful AI assistant. "
-                "Answer clearly and use the provided context when available.")}]
+"Answer clearly and use the provided context when available.")}]
 print("Assistant ready.")
 print("Type 'exit' to quit.\n")
 SCORE_THRESHOLD = 0.8
