@@ -1,0 +1,88 @@
+Part 1: How an image is made (the concept)
+    Pixels — the basic building block
+        Every digital photo/raster image is just a grid of tiny squares called pixels (picture elements). If you zoom in far enough on any photo, you'll see this grid — each square is one solid color.Photoshop EssentialsPinterestyoutube.comResults from the webThat blocky look when you zoom way in is the pixel grid becoming visible — each block is one pixel, and at normal zoom these blend together so smoothly your eye sees a continuous photo.
+        How each pixel gets its color
+            Each pixel stores numbers representing color, usually as three values: how much Red, Green, and Blue light to mix (RGB). Each channel typically ranges 0–255.
+            (255, 0, 0) → pure red
+            (0, 255, 0) → pure green
+            (255, 255, 255) → white
+            (0, 0, 0) → black
+            (128, 0, 128) → purple
+            
+        A 12-megapixel photo, for example, is roughly 4000×3000 pixels — that's 12 million little dots, each one storing 3 numbers (R, G, B). That's 36 million numbers just to describe one photo's colors.
+        So at its rawest, an image is just: width × height × (R, G, B values) — a giant table of numbers.
+
+Part 2: What's actually inside the file on disk
+    If image files just stored those raw numbers directly, they'd be huge (that 12MP photo would be ~36MB uncompressed). So real image files add structure and compression:
+    
+    1. Header / Signature
+        The first few bytes identify the format so software knows how to read the rest.
+            PNG starts with bytes that decode to ‰PNG
+            JPEG starts with bytes FF D8 FF
+
+    2. Metadata
+        Information about the image itself:
+            Width and height in pixels
+            Color depth (8-bit, 16-bit, etc.)
+            Color mode (RGB, grayscale, RGBA with transparency)
+            EXIF data on photos — camera model, date taken, GPS location, exposure settings
+
+    3. Compressed pixel data — the bulk of the file
+        Instead of storing every pixel's raw RGB values, formats compress the data:
+            JPEG (lossy): Throws away color detail the human eye barely notices, using math (DCT) to group similar regions. This is why JPEGs can look blocky/blurry if compressed too much — that detail is genuinely gone, not just hidden.
+            PNG (lossless): Compresses without losing any data (like a ZIP file), so you get back the exact original pixels, but the file is usually bigger than an equivalent JPEG.
+            That blocky/smudgy look in heavily-compressed JPEGs is the compression algorithm discarding detail — those little 8×8 pixel blocks become visible because nearby pixels got averaged together to save space.
+    
+    4. End marker / checksums
+        Some formats end with a specific byte sequence signaling "this is the end of the image," and some include checksums (like PNG's CRC per chunk) so software can detect if the file got corrupted.
+
+
+How raw data becomes a compressed, structured file (JPEG pipeline)
+    This is the encoding process — basically the reverse of what cv2.imread does for you:
+    
+    Step 1 — Color space conversion: RGB → YCbCr
+        Human eyes are far more sensitive to brightness (luminance) than color (chrominance). JPEG converts:
+        Y = luminance (brightness)
+        Cb, Cr = blue-difference and red-difference chroma
+        This separation lets JPEG throw away more color detail than brightness detail without it being very noticeable.
+    
+    Step 2 — Chroma subsampling
+        Cb and Cr channels get downsampled (commonly 4:2:0 — keeping full resolution Y, but only ¼ the resolution for Cb/Cr). This alone cuts data ~50% before any "real" compression happens.
+    
+    Step 3 — Block splitting
+        The image is chopped into 8×8 pixel blocks per channel.
+    
+    Step 4 — DCT (Discrete Cosine Transform)
+        Each 8×8 block of pixel values is mathematically transformed into 8×8 frequency coefficients — basically "how much low-frequency vs high-frequency detail is in this block." This isn't lossy yet, just a different representation of the same info.
+    
+    Step 5 — Quantization (this is where data is actually lost)
+        High-frequency coefficients (fine detail) get divided down and rounded, often to zero. Low-frequency coefficients (overall block color/brightness) are kept more precise. The "quality" slider in JPEG export controls how aggressive this rounding is.
+    
+    Step 6 — Entropy coding (Huffman coding)
+        The now mostly-zero, quantized coefficients are run-length encoded and Huffman coded — lossless compression on top of the lossy step. This is the actual bit-packing that shrinks file size further.
+    
+    Step 7 — Structuring into the file
+        The encoder writes:
+            FF D8                  ← Start Of Image marker
+            FF E0 [APP0 data]      ← JFIF header (version, DPI...)
+            FF DB [quantization tables]
+            FF C0 [frame header: width, height, components]
+            FF C4 [Huffman tables]
+            FF DA [scan header] [entropy-coded bitstream...]
+            FF D9                  ← End Of Image marker
+        
+        Each FF xx is a marker segment — this is the "structure" that lets a decoder jump to the right section and know how to interpret the bytes that follow.
+
+PNG's approach (lossless, different strategy)
+
+    Filtering — each row of pixels is encoded as a difference from a prediction based on neighboring pixels (e.g., "Sub" filter: store pixel - left_pixel). This doesn't shrink data yet, but makes it much more compressible (lots of small numbers/zeros instead of varied values).
+
+    DEFLATE compression — the same algorithm ZIP uses: LZ77 (find repeated patterns) + Huffman coding. Fully reversible — no data lost.
+
+    Chunk structure — PNG is literally built from chunks:
+        89 50 4E 47 0D 0A 1A 0A   ← PNG signature
+        [IHDR chunk]  ← width, height, bit depth, color type + CRC32
+        [IDAT chunk]  ← the DEFLATE-compressed pixel data + CRC32
+        [IEND chunk]  ← marks end of file
+
+    Each chunk has: length (4 bytes) → type name (4 bytes, e.g. IHDR) → data → CRC checksum (4 bytes). That's why corrupting one byte inside a chunk usually causes a CRC mismatch and the decoder rejects the whole file outright — PNG actually checks integrity, unlike a raw bitstream.z
