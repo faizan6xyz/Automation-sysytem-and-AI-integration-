@@ -1,4 +1,4 @@
-# =============================================================
+"""# =============================================================
 # DOCX TEXT EXTRACTION LIBRARIES - COMPARISON & EXAMPLES
 # =============================================================
 
@@ -146,4 +146,4 @@ print(docx_text)
 # docx2txt      | Partial| Yes    | No         | No           | Yes          | Very Fast
 # mammoth       | Yes    | No     | HTML/MD    | No           | Yes          | Fast
 # textract      | Yes    | No     | No         | Yes          | Hard         | Medium
-# tika          | Yes    | Yes    | Yes        | Yes          | Needs Java   | Slow
+# tika          | Yes    | Yes    | Yes        | Yes          | Needs Java   | Slow"""
