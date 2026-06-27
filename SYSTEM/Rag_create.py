@@ -152,7 +152,49 @@ def build_index(file_name, folder_path="SYSTEM/Data"):
         batch_embs = np.stack(list(_model.embed(batch))).astype(np.float32)
         faiss.normalize_L2(batch_embs)
         all_embeddings.append(batch_embs)
-
+    if not all_embeddings:
+        return
+    new_embeddings = np.vstack(all_embeddings)
+    index.add(new_embeddings)
+    final_chunks = existing_chunks + unique_new_chunks
+    final_metadata = existing_metadata + unique_new_metadata
+    print("Rebuilding BM25 index...")
+    tokenized_corpus = [chunk.lower().split() for chunk in final_chunks]
+    bm25 = BM25Okapi(tokenized_corpus)
+    save_data(index, final_chunks, final_metadata, bm25)
+    print(f"Indexing complete. Total vectors: {index.ntotal}")
+def build_index_from_text(text, source_name="manual_input", folder_path="SYSTEM/Data"):
+    if not text or not text.strip():
+        raise ValueError("Input text is empty or blank.")
+    index, existing_chunks, existing_metadata, dimension = load_existing_data()
+    if index is None:
+        index = faiss.IndexFlatIP(dimension)
+    text = text.strip()
+    new_chunks = chunk_text_semantic(text)
+    print(f"Generated {len(new_chunks)} new chunks from '{source_name}'")
+    # Deduplication
+    existing_set = set(existing_chunks)
+    unique_new_chunks = []
+    unique_new_metadata = []
+    for chunk in new_chunks:
+        if chunk not in existing_set:
+            chunk_id = len(existing_chunks) + len(unique_new_chunks)
+            unique_new_chunks.append(chunk)
+            unique_new_metadata.append({
+                "source": source_name,
+                "chunk_id": chunk_id
+            })
+    if not unique_new_chunks:
+        print("No new unique chunks to add.")
+        return
+    print(f"Adding {len(unique_new_chunks)} unique chunks after deduplication.")
+    # Batch Embedding
+    all_embeddings = []
+    for i in range(0, len(unique_new_chunks), BATCH_SIZE):
+        batch = unique_new_chunks[i:i + BATCH_SIZE]
+        batch_embs = np.stack(list(_model.embed(batch))).astype(np.float32)
+        faiss.normalize_L2(batch_embs)
+        all_embeddings.append(batch_embs)
     if not all_embeddings:
         return
     new_embeddings = np.vstack(all_embeddings)
@@ -166,3 +208,4 @@ def build_index(file_name, folder_path="SYSTEM/Data"):
     print(f"Indexing complete. Total vectors: {index.ntotal}")
 if __name__ == "__main__":
     build_index("testing.txt")
+    build_index_from_text("hello", source_name="example.png")
