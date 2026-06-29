@@ -7,7 +7,7 @@ from docx import Document
 from fastembed import TextEmbedding
 from sklearn.metrics.pairwise import cosine_similarity
 from rank_bm25 import BM25Okapi
-os.environ["FASTEMBED_CACHE_PATH"] = r"C:\Users\faiza\fastembed_models"
+os.environ["FASTEMBED_CACHE_PATH"] = r"C:\Users\faiza\.cache\huggingface\hub"
 CHUNK_PATH  = "SYSTEM/RAG_data"
 INDEX_PATH  = os.path.join(CHUNK_PATH, "rag_index.faiss")
 CHUNKS_PATH = os.path.join(CHUNK_PATH, "chunks.npy")
@@ -100,7 +100,11 @@ def semantic_chunking(sentences, threshold=0.75, max_chunk_size=20):
         chunks.append(" ".join(current_chunk))
     print(f"Created {len(chunks)} semantic chunks from {len(sentences)} sentences")
     return chunks
-def save_docx(docx_path, threshold=0.75, max_chunk_size=20):
+def save_docx(name, threshold=0.75, max_chunk_size=20 , folder_path = "SYSTEM/Data"):
+    docx_path = os.path.join(folder_path , name)
+    if not os.path.exists(docx_path):
+        print(f" Error: File not found at {docx_path}")
+        return
     print(f"Processing: {docx_path}")
     index, all_chunks, all_metadata, bm25 = load_db()
     text      = extract_text_docx(docx_path)
@@ -135,5 +139,5 @@ def save_docx(docx_path, threshold=0.75, max_chunk_size=20):
     print(f"Total metadata entries : {len(all_metadata)}")
     print(f"{docx_path} saved to database")
 if __name__ == "__main__":
-    save_docx("SYSTEM/data/test.docx")
+    save_docx("test.docx")
     

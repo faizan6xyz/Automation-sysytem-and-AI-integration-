@@ -7,7 +7,7 @@ import pickle
 from fastembed import TextEmbedding
 from sklearn.metrics.pairwise import cosine_similarity
 from rank_bm25 import BM25Okapi
-os.environ["FASTEMBED_CACHE_PATH"] = r"C:\Users\faiza\fastembed_models"
+os.environ["FASTEMBED_CACHE_PATH"] = r"C:\Users\faiza\.cache\huggingface\hub"
 CHUNK_PATH  = "SYSTEM/RAG_data"
 INDEX_PATH  = os.path.join(CHUNK_PATH, "rag_index.faiss")
 CHUNKS_PATH = os.path.join(CHUNK_PATH, "chunks.npy")
@@ -94,6 +94,9 @@ def save_pdf(file_name, threshold=0.75, max_chunk_size=20,folder_path="SYSTEM/Da
     print(f"Processing: {pdf_path}")
     index, all_chunks, all_metadata, bm25 = load_db()
     pdf_path = os.path.join(folder_path, file_name)
+    if not os.path.exists(pdf_path):
+        print(f" Error: File not found at {pdf_path}")
+        return
     text      = extract_text(pdf_path)
     sentences = split_into_sentences(text)
     chunks    = semantic_chunking(sentences, threshold=threshold, max_chunk_size=max_chunk_size)
